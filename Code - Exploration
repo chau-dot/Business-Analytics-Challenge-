@@ -1,0 +1,325 @@
+library(tidyverse)
+library(scales)
+library(corrplot)
+
+if (!exists("listings_clean")) listings_clean <- readRDS("listings_clean.rds")
+dir.create("figures_r", showWarnings = FALSE)
+
+# ---------- A. Revenue status and data quality (Section 2) --------------------
+# Revenue is price x nights booked (correlation should be 1)
+cor(listings_clean$estimated_revenue_l365d,
+    listings_clean$estimated_occupancy_l365d * listings_clean$price_num,
+    use = "complete.obs")
+
+# Missing, zero and positive revenue: 6,360 | 4,476 | 14,457 of 25,293
+listings_clean %>%
+  summarise(total            = n(),
+            missing_revenue  = sum(is.na(estimated_revenue_l365d)),
+            zero_revenue     = sum(estimated_revenue_l365d == 0, na.rm = TRUE),
+            positive_revenue = sum(estimated_revenue_l365d > 0, na.rm = TRUE)) %>%
+  mutate(across(-total, ~ round(.x / total * 100, 1), .names = "pct_{.col}"))
+
+# Listings with no reviews: 4,290, all with zero revenue
+listings_clean %>%
+  mutate(has_reviews = number_of_reviews > 0) %>%
+  group_by(has_reviews) %>%
+  summarise(n = n(), pct_zero_revenue = round(mean(estimated_revenue_l365d == 0, na.rm = TRUE) * 100, 1))
+
+# Do the 6,360 listings with no price differ from the rest?
+listings_clean %>%
+  mutate(price_missing = is.na(price_num)) %>%
+  group_by(price_missing) %>%
+  summarise(n = n(),
+            median_occupancy = median(estimated_occupancy_l365d, na.rm = TRUE),
+            median_reviews   = median(number_of_reviews, na.rm = TRUE),
+            pct_superhost    = round(mean(host_is_superhost, na.rm = TRUE) * 100, 1),
+            pct_entire_home  = round(mean(room_type == "Entire home/apt") * 100, 1))
+
+# Room types left out of the model: hotel 52 (12 earning), shared 217 (92 earning)
+listings_clean %>%
+  filter(room_type %in% c("Shared room", "Hotel room")) %>%
+  group_by(room_type) %>%
+  summarise(n = n(), earning = sum(estimated_revenue_l365d > 0, na.rm = TRUE),
+            median_revenue = median(estimated_revenue_l365d, na.rm = TRUE))
+
+# Model sample (14,353) and its data quality
+q <- listings_clean %>%
+  filter(room_type %in% c("Entire home/apt", "Private room"),
+         estimated_revenue_l365d > 0, estimated_occupancy_l365d > 0, price_num > 0)
+nrow(q)                                                       # 14,353
+quantile(q$price_num, c(0, .01, .5, .99, 1))                  # 30, 57.14, 252, 1,124.48, 23,149.5
+quantile(q$estimated_revenue_l365d, c(0, .01, .5, .99, 1))    # 204, 591, 15,804, 125,402, 3,623,832
+c(nights_over_365 = sum(q$estimated_occupancy_l365d > 365),   # all 0
+  zero_guests     = sum(q$accommodates < 1),
+  duplicate_ids   = sum(duplicated(q$id)))
+q %>% arrange(desc(estimated_revenue_l365d)) %>%              # eight largest: $5,671-$23,150 a night
+  select(id, room_type, accommodates, price_num, estimated_occupancy_l365d, estimated_revenue_l365d) %>%
+  head(8)
+
+# On the log scale, price vs nights booked (0.48 and 0.88)
+q %>%
+  summarise(n = n(),
+            cor_logrev_logprice = cor(log(estimated_revenue_l365d), log(price_num)),
+            cor_logrev_lognights = cor(log(estimated_revenue_l365d), log(estimated_occupancy_l365d)),
+            cor_logprice_lognights = cor(log(price_num), log(estimated_occupancy_l365d)))
+
+# ---------- B. Superhost comparison (Table 2, Figure 1) -----------------------
+# Medians: revenue 3,083 vs 23,400; nights 0 vs 90; rating 4.79 vs 4.91
+listings_clean %>%
+  group_by(host_is_superhost) %>%
+  summarise(n = n(), pct = round(n() / nrow(listings_clean) * 100, 1),
+            mean_price = round(mean(price_num, na.rm = TRUE)),                  # 313 vs 320
+            median_revenue = median(estimated_revenue_l365d, na.rm = TRUE),
+            median_nights  = median(estimated_occupancy_l365d, na.rm = TRUE),
+            median_rating  = median(review_scores_rating, na.rm = TRUE),
+            median_amenities = median(amenities_count, na.rm = TRUE)) %>%       # about 32 vs 45
+  as.data.frame()
+
+plot_df <- listings_clean %>%
+  mutate(host_group = factor(ifelse(host_is_superhost, "Superhost", "Non-Superhost"),
+                             levels = c("Non-Superhost", "Superhost"))) %>%
+  group_by(host_group) %>%
+  summarise(median_revenue = median(estimated_revenue_l365d, na.rm = TRUE),
+            median_nights  = median(estimated_occupancy_l365d, na.rm = TRUE), .groups = "drop")
+
+cols <- c("Non-Superhost" = "#64748B", "Superhost" = "#0C6DCD")
+fig1a <- ggplot(plot_df, aes(host_group, median_revenue, fill = host_group)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = dollar(floor(median_revenue + 0.5))), vjust = -0.5, size = 5, fontface = "bold") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(labels = dollar_format(), expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Median annual revenue (AUD)", x = NULL, y = NULL) +
+  theme_minimal(base_size = 14) + theme(legend.position = "none", panel.grid.major.x = element_blank())
+fig1b <- ggplot(plot_df, aes(host_group, median_nights, fill = host_group)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = comma(median_nights)), vjust = -0.5, size = 5, fontface = "bold") +
+  scale_fill_manual(values = cols) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Median nights booked, last 365 days", x = NULL, y = NULL) +
+  theme_minimal(base_size = 14) + theme(legend.position = "none", panel.grid.major.x = element_blank())
+fig1a; fig1b
+ggsave("figures_r/fig1a_median_revenue.png", fig1a, width = 6, height = 4.5, dpi = 200)
+ggsave("figures_r/fig1b_median_nights.png",  fig1b, width = 6, height = 4.5, dpi = 200)
+
+# ---------- C. Room type and location (Figure 2) ------------------------------
+# Entire homes 73.3% of listings, mean revenue $24,961; private rooms $4,034
+listings_clean %>%
+  group_by(room_type) %>%
+  summarise(n = n(), pct = round(n() / nrow(listings_clean) * 100, 1),
+            median_price = median(price_num, na.rm = TRUE),
+            mean_price = round(mean(price_num, na.rm = TRUE)),
+            mean_revenue = round(mean(estimated_revenue_l365d, na.rm = TRUE)),
+            pct_superhost = round(mean(host_is_superhost, na.rm = TRUE) * 100, 1)) %>%
+  arrange(desc(n))
+
+# Median revenue, price and superhost share by LGA (Nillumbik 21,639 ... Melton 1,479)
+listings_clean %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(n_listings = n(), median_price = median(price_num, na.rm = TRUE),
+            median_revenue = median(estimated_revenue_l365d, na.rm = TRUE),
+            pct_superhost = round(mean(host_is_superhost, na.rm = TRUE) * 100, 1)) %>%
+  arrange(desc(median_revenue)) %>% print(n = Inf)
+
+# Share of all listings by LGA (Melbourne 32.6%, Port Phillip 10.9%)
+listings_clean %>%
+  count(neighbourhood_cleansed, sort = TRUE) %>%
+  mutate(pct_of_market = round(n / sum(n) * 100, 1)) %>% print(n = Inf)
+
+# Median nights booked and price by LGA (Yarra Ranges 54 nights; Bayside price 329 but 6 nights)
+listings_clean %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(n = n(), median_nights = median(estimated_occupancy_l365d, na.rm = TRUE),
+            median_price = median(price_num, na.rm = TRUE)) %>%
+  filter(n >= 100) %>% arrange(desc(median_nights)) %>% print(n = Inf)
+
+# Entire-home median revenue by LGA with at least 100 entire homes
+listings_clean %>%
+  filter(room_type == "Entire home/apt") %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE)) %>%
+  filter(n >= 100) %>% arrange(desc(median_revenue)) %>% print(n = 28)
+
+# Distance from the CBD: 15,414 | 11,007 | 6,556 | 3,782 | 6,300
+dist_df <- listings_clean %>%
+  mutate(dist_bucket = cut(dist_to_cbd_km, breaks = c(-1, 2, 5, 10, 20, 100),
+                           labels = c("0-2 km", "2-5 km", "5-10 km", "10-20 km", "20 km+"))) %>%
+  group_by(dist_bucket) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE), .groups = "drop")
+print(dist_df)
+
+fig2a <- ggplot(dist_df, aes(dist_bucket, median_revenue, group = 1)) +
+  geom_line(colour = "#0C6DCD", linewidth = 1.3) + geom_point(colour = "#0C6DCD", size = 3.5) +
+  geom_text(aes(label = dollar(round(median_revenue))), vjust = -1, size = 4.5, fontface = "bold") +
+  scale_y_continuous(labels = dollar_format(), limits = c(0, 18000)) +
+  labs(title = "Median annual revenue by distance from the CBD",
+       x = "Distance from the Melbourne CBD (km)", y = "Median annual revenue per listing (AUD)") +
+  theme_minimal(base_size = 14)
+
+selected <- c("Yarra Ranges", "Yarra", "Melbourne", "Maribyrnong", "Stonnington",
+              "Port Phillip", "Darebin", "Bayside")
+lga_df <- listings_clean %>%
+  filter(room_type == "Entire home/apt", neighbourhood_cleansed %in% selected) %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE), .groups = "drop") %>%
+  mutate(highlight = case_when(neighbourhood_cleansed == "Melbourne" ~ "CBD",
+                               neighbourhood_cleansed %in% c("Yarra Ranges", "Yarra") ~ "Top two",
+                               TRUE ~ "Other"))
+fig2b <- ggplot(lga_df, aes(reorder(neighbourhood_cleansed, median_revenue), median_revenue, fill = highlight)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = dollar(round(median_revenue))), hjust = -0.1, size = 4.5, fontface = "bold") +
+  coord_flip() +
+  scale_fill_manual(values = c("Top two" = "#0C6DCD", "CBD" = "#F59E0B", "Other" = "#64748B")) +
+  scale_y_continuous(labels = dollar_format(), expand = expansion(mult = c(0, 0.2))) +
+  labs(title = "Entire-home median annual revenue by LGA (CBD in amber)",
+       x = "Local government area (LGA)", y = "Median annual revenue, entire homes (AUD)") +
+  theme_minimal(base_size = 14) + theme(legend.position = "none")
+fig2a; fig2b
+ggsave("figures_r/fig2a_distance.png", fig2a, width = 7, height = 4.5, dpi = 200)
+ggsave("figures_r/fig2b_lga_entire_homes.png", fig2b, width = 7, height = 4.5, dpi = 200)
+
+# Median revenue by LGA, all LGAs with 100+ listings (Appendix E, Figure A5)
+figA5 <- listings_clean %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE)) %>%
+  filter(n >= 100) %>%
+  ggplot(aes(reorder(neighbourhood_cleansed, median_revenue), median_revenue)) +
+  geom_col(fill = "#0C6DCD") + coord_flip() +
+  scale_y_continuous(labels = dollar_format()) +
+  labs(title = "Median Annual Revenue by Local Government Area",
+       subtitle = "LGAs with at least 100 listings", x = NULL, y = "Median Estimated Revenue (AUD/year)") +
+  theme_minimal()
+figA5
+ggsave("figures_r/figA5_lga_median.png", figA5, width = 7, height = 7, dpi = 200)
+
+# ---------- D. Property and booking terms (Figure 3) --------------------------
+# Amenity count: median 37, mean 35.5, range 1-106
+summary(listings_clean$amenities_count)
+
+# Median revenue by amenity count: 0, 0, 4,465, 8,856, 15,688, 19,929
+amen_df <- listings_clean %>%
+  mutate(amenity_bucket = cut(amenities_count, breaks = c(0, 10, 20, 30, 40, 50, 110),
+                              labels = c("0-10", "11-20", "21-30", "31-40", "41-50", "50+"))) %>%
+  group_by(amenity_bucket) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE), .groups = "drop")
+print(amen_df)
+
+# Median nights booked by minimum stay: 24, 30, 6, 0 (stays of 8+ nights are dropped here)
+stay_df <- listings_clean %>%
+  mutate(min_stay = cut(minimum_nights, breaks = c(0, 1, 2, 3, 7),
+                        labels = c("1 night", "2 nights", "3 nights", "4-7 nights"))) %>%
+  filter(!is.na(min_stay)) %>%
+  group_by(min_stay) %>%
+  summarise(n = n(), median_nights = median(estimated_occupancy_l365d, na.rm = TRUE), .groups = "drop") %>%
+  mutate(highlight = ifelse(min_stay %in% c("1 night", "2 nights"), "Short", "Longer"))
+print(stay_df)
+
+fig3a <- ggplot(amen_df, aes(amenity_bucket, median_revenue)) +
+  geom_col(fill = "#0C6DCD", width = 0.65) +
+  geom_text(aes(label = dollar(round(median_revenue))), vjust = -0.5, size = 4.5, fontface = "bold") +
+  scale_y_continuous(labels = dollar_format(), expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Median annual revenue by number of amenities",
+       x = "Number of amenities listed", y = "Median annual revenue per listing (AUD)") +
+  theme_minimal(base_size = 14) + theme(panel.grid.major.x = element_blank())
+fig3b <- ggplot(stay_df, aes(min_stay, median_nights, fill = highlight)) +
+  geom_col(width = 0.65) +
+  geom_text(aes(label = comma(median_nights)), vjust = -0.5, size = 4.5, fontface = "bold") +
+  scale_fill_manual(values = c("Short" = "#0C6DCD", "Longer" = "#64748B")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Median nights booked by minimum stay",
+       x = "Minimum stay required", y = "Median nights booked, last 365 days") +
+  theme_minimal(base_size = 14) + theme(legend.position = "none", panel.grid.major.x = element_blank())
+fig3a; fig3b
+ggsave("figures_r/fig3a_amenities.png", fig3a, width = 7, height = 4.5, dpi = 200)
+ggsave("figures_r/fig3b_min_stay.png",  fig3b, width = 7, height = 4.5, dpi = 200)
+
+# Reviews: median revenue $0 with no reviews, $39,312 with 100+
+listings_clean %>%
+  mutate(review_bucket = cut(number_of_reviews, breaks = c(-1, 0, 5, 20, 50, 100, 5000),
+                             labels = c("0", "1-5", "6-20", "21-50", "51-100", "100+"))) %>%
+  group_by(review_bucket) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE),
+            pct_superhost = round(mean(host_is_superhost, na.rm = TRUE) * 100, 1))
+
+# Ratings and reviews vs revenue (reasons they are not used as predictors)
+summary(listings_clean$review_scores_rating)
+listings_clean %>%
+  summarise(cor_rating_revenue  = cor(review_scores_rating, estimated_revenue_l365d, use = "pairwise.complete.obs"),
+            cor_numreviews_revenue = cor(number_of_reviews, estimated_revenue_l365d, use = "pairwise.complete.obs"))
+
+# Other host characteristics explored (host tenure, identity verification, multi-listing hosts)
+listings_clean %>%
+  summarise(cor_tenure_revenue = cor(hosts_time_as_host_years, estimated_revenue_l365d, use = "pairwise.complete.obs"))
+listings_clean %>%
+  group_by(host_identity_verified) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE))
+listings_clean %>%
+  mutate(host_type = ifelse(host_listings_count > 1, "Multi-listing", "Single-listing")) %>%
+  group_by(host_type) %>%
+  summarise(n = n(), median_revenue = median(estimated_revenue_l365d, na.rm = TRUE))
+
+# Amenities: most common amenities and median-revenue difference with/without each
+top_amenities <- listings_clean %>%
+  pull(amenities_clean) %>% str_split(",\\s*") %>% unlist() %>% str_trim() %>%
+  tibble(amenity = .) %>% filter(amenity != "") %>%
+  count(amenity, sort = TRUE) %>%
+  mutate(pct_of_listings = round(n / nrow(listings_clean) * 100, 1))
+top_amenities %>% print(n = 20)
+
+candidate_amenities <- top_amenities %>%
+  filter(pct_of_listings >= 10, pct_of_listings <= 85) %>% pull(amenity)
+amenity_impact <- map_dfr(candidate_amenities, function(a) {
+  has_it <- str_detect(listings_clean$amenities_clean, fixed(a))
+  tibble(amenity = a, n_with = sum(has_it), n_without = sum(!has_it),
+         median_revenue_with    = median(listings_clean$estimated_revenue_l365d[has_it],  na.rm = TRUE),
+         median_revenue_without = median(listings_clean$estimated_revenue_l365d[!has_it], na.rm = TRUE)) %>%
+    mutate(revenue_diff = median_revenue_with - median_revenue_without)
+})
+amenity_impact %>% filter(n_with >= 200, n_without >= 200) %>%
+  arrange(desc(revenue_diff)) %>% print(n = 20)
+# Single amenities mostly proxy for "a well-equipped listing run by a Superhost":
+listings_clean %>%
+  mutate(has_wine_glasses = str_detect(amenities_clean, fixed("Wine glasses"))) %>%
+  group_by(has_wine_glasses) %>%
+  summarise(mean_amenity_count = mean(amenities_count), pct_superhost = round(mean(host_is_superhost, na.rm = TRUE) * 100, 1))
+
+# ---------- E. Appendix E figures ---------------------------------------------
+# Correlation matrix (Figure A3)
+cor_matrix <- listings_clean %>%
+  select(estimated_revenue_l365d, estimated_occupancy_l365d, price_num, accommodates, bathrooms,
+         amenities_count, number_of_reviews, review_scores_rating, minimum_nights,
+         hosts_time_as_host_years, dist_to_cbd_km) %>%
+  cor(use = "pairwise.complete.obs")
+round(cor_matrix, 2)
+png("figures_r/figA3_corr.png", width = 1400, height = 1100, res = 150)
+corrplot(cor_matrix, method = "color", addCoef.col = "black", tl.col = "black",
+         tl.cex = 0.7, number.cex = 0.6, type = "upper", mar = c(0, 0, 1, 0))
+title("Correlation Matrix: Key Numeric Variables", line = 2.5)
+dev.off()
+
+# Bedrooms, bathrooms and guest capacity (accommodates ~ bedrooms = 0.84)
+listings_clean %>% select(accommodates, bedrooms, bathrooms) %>% cor(use = "pairwise.complete.obs")
+
+# Amenity count distribution (Figure A4)
+figA4 <- ggplot(listings_clean, aes(amenities_count)) +
+  geom_histogram(bins = 40, fill = "#0C6DCD", colour = "white", alpha = 0.85) +
+  geom_vline(aes(xintercept = mean(amenities_count, na.rm = TRUE)), colour = "#F59E0B", linewidth = 1, linetype = "dashed") +
+  geom_vline(aes(xintercept = median(amenities_count, na.rm = TRUE)), colour = "#E74C3C", linewidth = 1) +
+  labs(title = "Distribution of Amenity Count Across Listings",
+       subtitle = "Dashed = mean | Solid red = median", x = "Number of Amenities", y = "Count") +
+  theme_minimal()
+figA4
+ggsave("figures_r/figA4_amen_hist.png", figA4, width = 7, height = 5, dpi = 200)
+
+# Amenity count by Superhost status (Figure A6), with readable labels
+figA6 <- listings_clean %>%
+  mutate(host_group = factor(ifelse(host_is_superhost, "Superhost", "Non-Superhost"),
+                             levels = c("Non-Superhost", "Superhost"))) %>%
+  ggplot(aes(host_group, amenities_count, fill = host_group)) +
+  geom_boxplot(alpha = 0.75, outlier.alpha = 0.3) +
+  scale_fill_manual(values = c("Non-Superhost" = "#64748B", "Superhost" = "#0C6DCD")) +
+  labs(title = "Amenity Count: Superhost vs Non-Superhost",
+       subtitle = "Superhosts offer notably more amenities on average",
+       x = "Superhost", y = "Number of Amenities") +
+  theme_minimal() + theme(legend.position = "none")
+figA6
+ggsave("figures_r/figA6_amen_box.png", figA6, width = 7, height = 5, dpi = 200)
