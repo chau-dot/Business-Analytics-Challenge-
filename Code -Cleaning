@@ -1,0 +1,60 @@
+# ============================================================
+# 01_cleaning.R  |  CMCE30005 Business Analytics Challenge
+# Author: Chau Nguyen (1553882)
+#
+# Purpose : raw Inside Airbnb listings file -> analysis-ready `listings_clean`
+# Input   : listings_airbnb.csv (Melbourne, snapshot of 16 June 2026)
+# Output  : listings_clean (25,293 rows), saved as listings_clean.rds
+#
+# Run order: 01_cleaning.R -> 02_exploration.R -> 03_model.R
+# Install any missing packages once, BEFORE loading them (do not reinstall a
+# package that is already loaded, as this restarts R and wipes the session):
+#   install.packages(c("tidyverse", "janitor", "geosphere", "scales", "corrplot"))
+# ============================================================
+library(tidyverse)
+library(janitor)
+library(geosphere)
+
+# ---- 1. Read the raw file ---------------------------------------------------
+listings <- read_csv("listings_airbnb.csv", show_col_types = FALSE) %>% clean_names()
+cat("Raw listings:", nrow(listings), "| variables:", ncol(listings), "\n")   # 25,728 | 90
+
+# Fields reported as empty in the report (1 = 100% missing)
+listings %>%
+  select(any_of(c("host_response_time", "host_response_rate", "host_acceptance_rate",
+                  "license", "instant_bookable"))) %>%
+  summarise(across(everything(), ~ mean(is.na(.x)))) %>%
+  print()
+
+# ---- 2. Keep the 23 relevant variables and derive new fields -----------------
+all_listings <- listings %>%
+  select(
+    id, host_id, hosts_time_as_host_years, host_is_superhost, host_listings_count,
+    host_identity_verified, neighbourhood_cleansed, latitude, longitude,
+    property_type, room_type, accommodates, bedrooms, bathrooms, amenities,
+    price, minimum_nights, availability_365, number_of_reviews,
+    review_scores_rating, review_scores_cleanliness,
+    estimated_occupancy_l365d, estimated_revenue_l365d
+  ) %>%
+  mutate(
+    price_num       = as.numeric(gsub("[$,]", "", price)),                 # "$1,200.00" -> 1200
+    amenities_clean = str_remove_all(amenities, "\\[|\\]|\""),
+    amenities_count = str_count(amenities_clean, ",") + 1,                 # number of amenities
+    dist_to_cbd_km  = distHaversine(cbind(longitude, latitude),
+                                    c(144.9631, -37.8136)) / 1000          # km to Melbourne CBD
+  )
+
+# ---- 3. Exclude long-stay listings (minimum stay of 30+ nights or none recorded)
+excluded <- all_listings %>% filter(is.na(minimum_nights) | minimum_nights >= 30)
+excluded %>%
+  summarise(n = n(),                                                        # 435
+            median_price     = median(price_num, na.rm = TRUE),             # 84.90
+            pct_zero_revenue = round(mean(estimated_revenue_l365d == 0, na.rm = TRUE) * 100, 1)) %>%  # 78.5
+  print()
+
+listings_clean <- all_listings %>% filter(minimum_nights < 30)
+cat("Rows after excluding long-stay listings:", nrow(listings_clean), "\n")   # 25,293
+
+# ---- 4. Save ------------------------------------------------------------------
+saveRDS(listings_clean, "listings_clean.rds")
+listings_clean %>% select(-amenities, -amenities_clean) %>% write_csv("listings_clean_export.csv")
