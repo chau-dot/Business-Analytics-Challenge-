@@ -1,16 +1,4 @@
-# ============================================================
-# 01_cleaning.R  |  CMCE30005 Business Analytics Challenge
-# Author: Chau Nguyen (1553882)
-#
-# Purpose : raw Inside Airbnb listings file -> analysis-ready `listings_clean`
-# Input   : listings_airbnb.csv (Melbourne, snapshot of 16 June 2026)
-# Output  : listings_clean (25,293 rows), saved as listings_clean.rds
-#
-# Run order: 01_cleaning.R -> 02_exploration.R -> 03_model.R
-# Install any missing packages once, BEFORE loading them (do not reinstall a
-# package that is already loaded, as this restarts R and wipes the session):
-#   install.packages(c("tidyverse", "janitor", "geosphere", "scales", "corrplot"))
-# ============================================================
+
 library(tidyverse)
 library(janitor)
 library(geosphere)
