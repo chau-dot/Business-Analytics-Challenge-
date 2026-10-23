@@ -56,6 +56,4 @@ Revenue and nights are estimates from one snapshot, so seasonality is not covere
 - Gunter, U. (2018). What makes an Airbnb host a Superhost? Empirical evidence from San Francisco and the Bay Area. *Tourism Management, 66*, 26-37.
 - Inside Airbnb. (2026). *Get the data: Melbourne, Victoria, Australia* [Listings dataset, snapshot of 16 June 2026]. http://insideairbnb.com/get-the-data/
 - Liang, S., Schuckert, M., Law, R., & Chen, C. (2017). Be a "Superhost": The importance of badge systems for peer-to-peer rental accommodations. *Tourism Management, 60*, 454-465. https://doi.org/10.1016/j.tourman.2017.01.007
-- R Core Team. (2026). *R: A language and environment for statistical computing* (Version 4.6.0). R Foundation for Statistical Computing. https://www.R-project.org/
 - Wang, D., & Nicolau, J. L. (2017). Price determinants of sharing economy based accommodation rental: A study of listings from 33 cities on Airbnb.com. *International Journal of Hospitality Management, 62*, 120-131. https://doi.org/10.1016/j.ijhm.2016.12.007
-- Wickham, H., et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software, 4*(43), 1686. https://doi.org/10.21105/joss.01686
