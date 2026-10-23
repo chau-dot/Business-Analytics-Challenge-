@@ -39,8 +39,6 @@ Multiple linear regression (OLS) on log annual revenue, with Superhost status, r
 
 Yarra is the only LGA clearly ahead of the CBD. 23 of the 27 location comparisons are clearly below it, and the outer suburbs are lowest.
 
-(The README in the zip also embeds two figures here: `fig5_decomposition.png` and `fig4_lga_effects.png`.)
-
 ## Recommendations
 
 1. **Acquire entire homes** rather than private rooms.
@@ -52,30 +50,6 @@ Yarra is the only LGA clearly ahead of the CBD. 23 of the 27 location comparison
 
 Revenue and nights are estimates from one snapshot, so seasonality is not covered. Results are associations, not causes. There is no cost data, so profit cannot be compared. R-squared is 0.42, so the model shows which factors matter better than it predicts a single listing.
 
-## Repository structure
-
-```
-.
-├── README.md
-├── scripts/
-│   ├── 01_cleaning.R        # raw listings file -> analysis set (25,293 rows)
-│   └── 02_model.R           # model sample, three regressions, diagnostics, results table
-├── model_full_results.csv   # full regression table (created by 02_model.R)
-└── figures/                 # charts used in the report
-```
-
-## How to reproduce
-
-1. Download the Melbourne listings file from Inside Airbnb (snapshot of 16 June 2026) and save it as `listings_airbnb.csv` in your R working directory.
-2. In R, install the packages: `tidyverse`, `janitor`, `geosphere`, `car`.
-3. Run `scripts/01_cleaning.R`, then `scripts/02_model.R`, in the same R session.
-4. Check that the model uses 14,353 rows and that `model_full_results.csv` is created.
-
-Developed in R 4.6.0.
-
-## AI use
-
-I used Claude (Anthropic) as an assistant to help plan the analysis, fix R code errors, and draft and edit the report text. I ran all the analysis in R, and the numbers in the report come from my R output. Figures 1 to 5 in the report were drawn from those values, and I can explain every result.
 
 ## References
 
