@@ -1,156 +1,87 @@
-# CMCE30005 Business Analytics Challenge
-## AirBnb Melbourne
 
-**Subject:** CMCE30005 Business Analytics Challenge, Semester 2 2026
-**University:** University of Melbourne
-**Team Members:** Chau Nguyen 1553882
-**GitHub Link** https://github.com/chau-dot/Business-Analytics-Challenge-
+# What Drives Airbnb Revenue in Melbourne?
 
----
+**Evidence for a new multi-property host**
 
-## Business Problem
+Chau Nguyen | Student ID 1553882
+CMCE30005 Business Analytics Challenge | Semester 2, 2026 | University of Melbourne
 
-Our client is preparing to invest in and list multiple Airbnb properties across 
-Melbourne but currently has no data driven basis for deciding which properties, 
-locations, or hosting practices are likely to perform well. This project 
-investigates what listing, host, and location factors drive Airbnb revenue and 
-occupancy performance in Melbourne, and how a new host should position their 
-property to compete on more than price. This matters because early exploration 
-revealed that Superhosts earn substantially more revenue than non Superhosts 
-despite charging near identical nightly prices, indicating that price alone 
-cannot explain performance in this market, a costly assumption for a client 
-about to commit capital to specific properties. The project uses linear 
-regression, supported by descriptive and exploratory analysis, to identify 
-which factors most strongly predict revenue and translate these findings into 
-practical, evidence based recommendations for the client.
+## Overview
 
----
+This project looks at what drives annual revenue for Airbnb listings in Melbourne and how a new host should position a property. It uses 25,293 short-stay listings from the Inside Airbnb snapshot of 16 June 2026. The full written report is submitted separately through the LMS, and this README summarises it.
 
-## Dataset
+**Business question:** which listing, host and location factors drive Airbnb revenue in Melbourne, and how should a new host set up a property to compete on more than price?
 
-**Dataset name:** Airbnb Melbourne - June 2026 Snapshot
-**Source:** Inside Airbnb - http://insideairbnb.com/
-**Coverage:** All active Airbnb listings in Melbourne as of 16 June 2026
+## Data
 
-### Data Files
+- **Source:** [Inside Airbnb](http://insideairbnb.com/get-the-data/), Melbourne listings file (25,728 listings, 90 variables), snapshot of 16 June 2026.
+- **Cleaning:** 23 variables kept, 5 empty fields dropped, 435 long-stay listings (minimum stay of 30 nights or more, or none recorded) removed, leaving 25,293 listings.
+- **Model sample:** 14,353 entire homes and private rooms with positive revenue, nights booked and price.
+- **Note:** revenue and nights booked are Inside Airbnb estimates for the last 365 days, not confirmed bookings. The raw CSV files are not included in this repository (see "How to reproduce").
 
-| File | Description | Size |
-|------|-------------|------|
-| `listings_all.csv` | Full listing details (~75 variables) | ~50 MB |
-| `reviews_all.csv` | Guest review text | ~200 MB |
-| `calendar_all.csv` | Daily availability and pricing | ~1 GB |
+## Method
 
----
+Multiple linear regression (OLS) on log annual revenue, with Superhost status, room type, guest capacity, amenity count, host tenure, minimum stay and local government area (LGA) as predictors. Because revenue = price x nights booked, the same model is also fitted to log price and log nights booked, so each effect splits exactly into a price part and a nights-booked part. The model is trained on a random 80/20 split (seed 123).
 
-## Introduction
+- Test-set fit (log scale): R-squared 0.42, RMSE 0.98, MAE 0.78
+- Maximum variance inflation factor: 1.42
+- Results held when the highest and lowest 1% of prices were removed
 
-AirBnb has become a significant channel for short-term accommodation in 
-Melbourne, and prospective hosts increasingly rely on data to decide where and 
-how to list a property. This project investigates what drives revenue and
-occupancy performance for Airbnb listings in Melbourne, using data from Inside 
-AirBnb, an independent platform publishing public AirBnb listings data. The
-dataset was selected because it provides both listing-level detail and
-platform-estimated performance measures, allowing performance to be examined 
-directly rather than inferred.
+## Key findings
 
-The project is framed around a client who intends to list multiple properties 
-in Melbourne and requires evidence-based guidance rather than assumption. Early
-exploration revealed a striking pattern: Superhosts earn substantially more 
-revenue than non-Superhosts despite charging near-identical prices, suggesting 
-that price is not the primary driver of performance in this market. By the final
-report, this project aims to identify which factors most strongly explain isting
-performance and translate these findings into practical recommendations for a 
-new host. 
+| Factor | Effect on annual revenue | Works through |
+|---|---|---|
+| Superhost-standard listing | +112% | Nights booked (+120%), not price |
+| Entire home (vs private room) | +166% | Price (+80%) and nights (+48%) |
+| 3-night minimum stay (vs 1 night) | -37% | Nights booked |
+| Yarra (vs Melbourne CBD) | +23% | Price |
+| Each extra amenity | +1.3% | Mostly nights booked |
 
-## Problem Definition and Objectives
+Yarra is the only LGA clearly ahead of the CBD. 23 of the 27 location comparisons are clearly below it, and the outer suburbs are lowest.
 
-The business problem addressed is: what listings, host, and location factors 
-drive AirBnb revenue and occupancy performance in Melbourne, and how should a 
-new host position their property to complete on more than price? This matters 
-because a client preparing to invest in multiple properties needs to understand 
-what genuinely determines returns before committing capital, rather than relying 
-on the common assumption that higher prices or better locations alone guarantee
-success.
+(The README in the zip also embeds two figures here: `fig5_decomposition.png` and `fig4_lga_effects.png`.)
 
-The project's scope is limited to entire home and private-room listings, given
-that shared-room and hotel-room listings each represent under one percent of the 
-market and are commercially marginal. The primary objective is to build a 
-regression model explaining variation in estimated annual revenue, using host, 
-property, location, and guest-experience variables as predictors. A central 
-hypothesis under investigation is that Superhost status is associated with 
-substantially higher revenue primarily through increased occupancy rather than 
-through higher pricing, and that this relationship may be confounded by other 
-factors such as amenity provision and room type.
+## Recommendations
 
-##Data Description
+1. **Acquire entire homes** rather than private rooms.
+2. **Look beyond the CBD, towards Yarra.** The CBD holds 32.6% of listings but is not the most profitable market.
+3. **Set 1 to 2 night minimum stays.**
+4. **Operate to Superhost standard and equip the property fully.**
 
-The primary dataset is listings_airbnb.csv from Inside Airbnb, a snapshot of 
-25,728 active Melbourne listings across 90 variables, collected 16 June 2026. 
-Two supporting files, containing calendar availability and guest reviews, were 
-also provided but have not yet been incorporated into the analysis.
+## Limitations
 
-Data cleaning began by retaining only variables relevant to the business 
-problem, reducing the dataset to 22 columns covering host, property, location, 
-pricing, and review characteristics. Price was converted from a currency-
-formatted string to a numeric field. Five host-related variables, including 
-response rate and license status, were entirely missing and were excluded. 
-Listings requiring a minimum stay of 30 nights or more (n = 435) were removed 
-after analysis showed a median price of $84.90 and a 78.5 percent zero-revenue 
-rate for this group, indicating they function as long-term rentals rather than 
-short-term Airbnb stays. The cleaned dataset comprises 25,293 listings.
+Revenue and nights are estimates from one snapshot, so seasonality is not covered. Results are associations, not causes. There is no cost data, so profit cannot be compared. R-squared is 0.42, so the model shows which factors matter better than it predicts a single listing.
 
-Exploratory analysis identified several important patterns. Estimated revenue is
-heavily right-skewed, with approximately 25 percent of listings showing zero 
-revenue; this was found to align almost perfectly with listings having zero 
-reviews, confirming these are genuinely inactive rather than erroneous records. 
-Superhosts show a markedly higher median revenue than non-Superhosts ($23,400 
-versus $2,928) despite comparable pricing, with the gap explained primarily by 
-occupancy (median 96 nights versus 0). A correlation matrix confirmed occupancy 
-as the strongest numeric correlate of revenue (r = 0.58), well ahead of price 
-(r = 0.13).
+## Repository structure
 
-## Methodology and Analytical Approach
+```
+.
+├── README.md
+├── scripts/
+│   ├── 01_cleaning.R        # raw listings file -> analysis set (25,293 rows)
+│   └── 02_model.R           # model sample, three regressions, diagnostics, results table
+├── model_full_results.csv   # full regression table (created by 02_model.R)
+└── figures/                 # charts used in the report
+```
 
-This project will use linear regression as the primary analytical method, with 
-estimated_revenue_l365d (log-transformed to address skew) as the target variable
-and estimated_occupancy_l365d examined as a supporting variable. Regression was 
-selected because the objective is to identify which factors influence revenue 
-and by how much, rather than to produce a prediction alone; regression 
-coefficients allow specific, explainable findings to be communicated to the 
-client. Random forest regression will be considered as a comparison model to 
-test whether non-linear relationships, such as the U-shaped association observed 
-between revenue and distance from the CBD, improve on the linear approach.
+## How to reproduce
 
-Several assumptions and validation considerations have already emerged from 
-exploratory analysis. A correlation of 0.84 between accommodates and bedrooms 
-indicates multicollinearity; accommodates will be retained as the primary size 
-variable. Individual amenities were found to be confounded with overall amenity 
-count and Superhost status, so amenities_count will be used instead of specific 
-amenity indicators. Distance to the CBD shows a non-linear relationship with 
-revenue and will require a categorical or quadratic treatment rather than a raw 
-linear term. Model validation will use a held-out test set, with RMSE, MAE, and 
-R² as evaluation criteria. All analysis is conducted in R, using the tidyverse 
-ecosystem for data manipulation and visualisation, selected for its suitability 
-for statistical modelling and reproducible reporting.
+1. Download the Melbourne listings file from Inside Airbnb (snapshot of 16 June 2026) and save it as `listings_airbnb.csv` in your R working directory.
+2. In R, install the packages: `tidyverse`, `janitor`, `geosphere`, `car`.
+3. Run `scripts/01_cleaning.R`, then `scripts/02_model.R`, in the same R session.
+4. Check that the model uses 14,353 rows and that `model_full_results.csv` is created.
 
-## Analysis Plan and Progress to Date
+Developed in R 4.6.0.
 
-To date, the dataset has been cleaned and reduced to relevant variables, and an 
-extensive exploratory analysis has been completed. This included univariate and 
-grouped summary statistics, correlation analysis, and visualisations across host 
-characteristics, room type, location, review behaviour, amenities, and booking 
-terms. Key findings include the Superhost revenue gap, a non-linear relationship 
-between revenue and distance to the CBD, weak explanatory power of review scores 
-relative to review volume, and confounding between amenity count and Superhost 
-status.
+## AI use
 
-Remaining tasks include finalising feature engineering, particularly encoding 
-categorical variables and deriving a distance-based location feature, followed 
-by fitting and comparing the linear regression and random forest models. 
-Subsequent steps include model evaluation against the held-out test set and 
-translating significant predictors into concrete recommendations for the client 
-regarding location, property type, and hosting standards, to be presented in the 
-final report.
+I used Claude (Anthropic) as an assistant to help plan the analysis, fix R code errors, and draft and edit the report text. I ran all the analysis in R, and the numbers in the report come from my R output. Figures 1 to 5 in the report were drawn from those values, and I can explain every result.
 
+## References
 
-*Last updated: 18/09/2026*
+- Gunter, U. (2018). What makes an Airbnb host a Superhost? Empirical evidence from San Francisco and the Bay Area. *Tourism Management, 66*, 26-37.
+- Inside Airbnb. (2026). *Get the data: Melbourne, Victoria, Australia* [Listings dataset, snapshot of 16 June 2026]. http://insideairbnb.com/get-the-data/
+- Liang, S., Schuckert, M., Law, R., & Chen, C. (2017). Be a "Superhost": The importance of badge systems for peer-to-peer rental accommodations. *Tourism Management, 60*, 454-465. https://doi.org/10.1016/j.tourman.2017.01.007
+- R Core Team. (2026). *R: A language and environment for statistical computing* (Version 4.6.0). R Foundation for Statistical Computing. https://www.R-project.org/
+- Wang, D., & Nicolau, J. L. (2017). Price determinants of sharing economy based accommodation rental: A study of listings from 33 cities on Airbnb.com. *International Journal of Hospitality Management, 62*, 120-131. https://doi.org/10.1016/j.ijhm.2016.12.007
+- Wickham, H., et al. (2019). Welcome to the tidyverse. *Journal of Open Source Software, 4*(43), 1686. https://doi.org/10.21105/joss.01686
